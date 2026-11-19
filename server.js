@@ -6,7 +6,10 @@ const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
 const QRCode = require('qrcode');
-const cloudflared = require('cloudflared');
+let cloudflared = null;
+try {
+  cloudflared = require('cloudflared');
+} catch (e) {}
 
 const app = express();
 const server = http.createServer(app);
@@ -84,6 +87,10 @@ function saveServerInfo() {
 // Start Cloudflare Tunnel automatically for instant 4G/5G/Wi-Fi mobile access
 function initTunnel() {
   saveServerInfo();
+  if (!cloudflared || !cloudflared.bin) {
+    console.log('Running in direct public mode (Render / Cloud environment).');
+    return;
+  }
   try {
     const cf = spawn(cloudflared.bin, ['tunnel', '--url', `http://localhost:${PORT}`]);
 
