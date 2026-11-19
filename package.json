@@ -1,0 +1,14 @@
+{
+  "name": "office-rush-server",
+  "version": "1.0.0",
+  "description": "Office Rush Party Royale Server for NT Travel Outing",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "qrcode": "^1.5.4",
+    "socket.io": "^4.8.4"
+  }
+}
