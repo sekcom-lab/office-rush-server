@@ -6,10 +6,7 @@ const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
 const QRCode = require('qrcode');
-let cloudflared = null;
-try {
-  cloudflared = require('cloudflared');
-} catch (e) {}
+const cloudflared = require('cloudflared');
 
 const app = express();
 const server = http.createServer(app);
@@ -25,9 +22,7 @@ app.use(express.static(__dirname));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Path to travel outing registration database
-const TRAVEL_DATA_FILE = fs.existsSync(path.join(__dirname, 'data', 'registrations.json'))
-  ? path.join(__dirname, 'data', 'registrations.json')
-  : path.join(__dirname, '..', 'data', 'registrations.json');
+const TRAVEL_DATA_FILE = path.join(__dirname, '..', 'data', 'registrations.json');
 
 function getTravelParticipants() {
   try {
@@ -86,13 +81,9 @@ function saveServerInfo() {
   }
 }
 
-// Start Cloudflare Tunnel automatically for instant 4G/5G/Wi-Fi mobile access (if available)
+// Start Cloudflare Tunnel automatically for instant 4G/5G/Wi-Fi mobile access
 function initTunnel() {
   saveServerInfo();
-  if (!cloudflared || !cloudflared.bin) {
-    console.log('Running in direct public mode (Render / Cloud environment).');
-    return;
-  }
   try {
     const cf = spawn(cloudflared.bin, ['tunnel', '--url', `http://localhost:${PORT}`]);
 
@@ -152,8 +143,8 @@ app.get('/api/qr', async (req, res) => {
 // ==========================================
 // OFFICE RUSH - RACE ENGINE & ADMIN SYSTEM
 // ==========================================
-const TRACK_LENGTH = 3200;
-const BASE_SPEED = 4.8;
+const TRACK_LENGTH = 4000;
+const BASE_SPEED = 7.2;
 const CEILING_HEIGHT = 475; // จำกัดเพดานกระโดด ป้องกันตัวละครหลุดจอ (ขยับขึ้นอีก 1.5 เท่า = 475px ลอยตัวได้สูงอิสระ)
 
 const GAME_STATES = {
@@ -198,12 +189,13 @@ class OfficeRaceManager {
         height: type === 'copier' ? 48 : (type === 'coffee' ? 14 : 36)
       });
 
-      if (Math.random() < 0.45) {
-        const itemType = Math.random() < 0.5 ? 'espresso' : (Math.random() < 0.5 ? 'donut' : 'clip');
+      if (Math.random() < 0.55) {
+        const rVal = Math.random();
+        const itemType = rVal < 0.3 ? 'espresso' : (rVal < 0.55 ? 'energy' : (rVal < 0.75 ? 'donut' : 'clip'));
         this.powerUps.push({
           id: 'item_' + Math.round(nextX + 60),
           x: nextX + 60 + Math.random() * 30,
-          y: Math.random() < 0.5 ? -15 : -65,
+          y: Math.random() < 0.5 ? -18 : -75,
           type: itemType,
           collectedBy: new Set()
         });
@@ -385,10 +377,10 @@ class OfficeRaceManager {
           let currentSpeed = player.speed;
           if (player.boostTimer > 0) {
             player.boostTimer--;
-            currentSpeed *= 1.6;
+            currentSpeed *= 1.85; // บูสต์ติดสปีดพุ่งเร็วสะใจ
           } else if (player.stumbleTimer > 0) {
             player.stumbleTimer--;
-            currentSpeed *= 0.35;
+            currentSpeed *= 0.45;
           }
 
           player.distance += currentSpeed;
@@ -482,14 +474,18 @@ class OfficeRaceManager {
 
   applyPowerUp(player, type) {
     if (type === 'espresso') {
-      player.boostTimer = 100;
+      player.boostTimer = 110;
       io.emit('itemCollected', { playerId: player.id, type: 'espresso' });
+    } else if (type === 'energy') {
+      player.boostTimer = 150;
+      player.bonusScore += 25;
+      io.emit('itemCollected', { playerId: player.id, type: 'energy', bonus: 25 });
     } else if (type === 'donut') {
-      player.shieldTimer = 160;
+      player.shieldTimer = 180;
       io.emit('itemCollected', { playerId: player.id, type: 'donut' });
     } else if (type === 'clip') {
-      player.bonusScore += 20;
-      io.emit('itemCollected', { playerId: player.id, type: 'clip', bonus: 20 });
+      player.bonusScore += 25;
+      io.emit('itemCollected', { playerId: player.id, type: 'clip', bonus: 25 });
     }
   }
 
