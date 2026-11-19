@@ -172,6 +172,7 @@ class OfficeRaceManager {
     this.obstacles = [];
     this.powerUps = [];
     this.finishedCount = 0;
+    this.activeChaos = null; // { type, name, timer, maxTimer }
 
     this.generateTrack();
   }
@@ -180,25 +181,47 @@ class OfficeRaceManager {
     this.obstacles = [];
     this.powerUps = [];
 
-    const obstacleTypes = ['box', 'coffee', 'copier', 'cone'];
     let nextX = 380;
 
     while (nextX < TRACK_LENGTH - 200) {
-      nextX += 320 + Math.random() * 200; // สิ่งกีดขวางห่างขึ้น ไม่ติดกันเกินไปตามคำขอ
+      nextX += 300 + Math.random() * 200; // ระยะห่างกำลังดี
       if (nextX >= TRACK_LENGTH - 150) break;
 
-      const type = obstacleTypes[Math.floor(Math.random() * obstacleTypes.length)];
+      let type;
+      let width = 32;
+      let height = 36;
+
+      if (nextX >= 3200) {
+        // 🏖️ โซนหาดทรายทองหัวหิน
+        const beachTypes = ['crab', 'coconut', 'sandcastle'];
+        type = beachTypes[Math.floor(Math.random() * beachTypes.length)];
+        if (type === 'crab') { width = 34; height = 26; }
+        else if (type === 'coconut') { width = 28; height = 24; }
+        else if (type === 'sandcastle') { width = 44; height = 36; }
+      } else if (nextX >= 2100) {
+        // 🌅 โซนถนนเลียบหาด
+        const hwyTypes = ['cone', 'tire', 'cone'];
+        type = hwyTypes[Math.floor(Math.random() * hwyTypes.length)];
+        if (type === 'tire') { width = 32; height = 32; }
+      } else {
+        // 🏢 โซนออฟฟิศ
+        const offTypes = ['box', 'coffee', 'copier'];
+        type = offTypes[Math.floor(Math.random() * offTypes.length)];
+        if (type === 'copier') { width = 44; height = 48; }
+        else if (type === 'coffee') { width = 32; height = 14; }
+      }
+
       this.obstacles.push({
         id: 'obs_' + Math.round(nextX),
         x: nextX,
         type: type,
-        width: type === 'copier' ? 44 : 32,
-        height: type === 'copier' ? 48 : (type === 'coffee' ? 14 : 36)
+        width: width,
+        height: height
       });
 
-      if (Math.random() < 0.55) {
+      if (Math.random() < 0.58) {
         const rVal = Math.random();
-        const itemType = rVal < 0.3 ? 'espresso' : (rVal < 0.55 ? 'energy' : (rVal < 0.75 ? 'donut' : 'clip'));
+        const itemType = rVal < 0.28 ? 'espresso' : (rVal < 0.55 ? 'energy' : (rVal < 0.78 ? 'donut' : 'clip'));
         this.powerUps.push({
           id: 'item_' + Math.round(nextX + 60),
           x: nextX + 60 + Math.random() * 30,
@@ -228,6 +251,7 @@ class OfficeRaceManager {
       laneOffset: (this.players.size % 4) * 12 - 18,
       speed: BASE_SPEED,
       isJumping: false,
+      jumpCount: 0,
       jumpY: 0,
       jumpVy: 0,
       stumbleTimer: 0,
@@ -325,13 +349,56 @@ class OfficeRaceManager {
     const player = this.players.get(socketId);
     if (!player || player.finished || this.gameState !== GAME_STATES.RACING) return;
 
-    if (player.jumpY <= 0.05) {
+    if (player.jumpY <= 0.05 || !player.isJumping) {
       player.isJumping = true;
+      player.jumpCount = 1;
       player.jumpVy = 13.5;
       io.emit('playerJumped', { id: player.id });
-    } else if (player.jumpVy > -4 && player.jumpVy < 6) {
-      player.jumpVy = 11.5;
+    } else if (player.jumpCount === 1) {
+      player.jumpCount = 2;
+      player.jumpVy = 12.0;
       io.emit('playerDoubleJumped', { id: player.id });
+    }
+  }
+
+  triggerChaos(type) {
+    if (this.gameState !== GAME_STATES.RACING) return;
+    if (type === 'sandstorm') {
+      this.activeChaos = { type: 'sandstorm', name: '🌪️ พายุทรายหัวหินพัดกระหน่ำ! วิ่งต้านลม!', timer: 210, maxTimer: 210 };
+      io.emit('chaosEvent', this.activeChaos);
+    } else if (type === 'fever') {
+      this.activeChaos = { type: 'fever', name: '⚡ FEVER TIME! ชาไทยแจกทั้งสนาม สปีดติดจรวด!', timer: 240, maxTimer: 240 };
+      for (const p of this.players.values()) {
+        if (!p.finished) {
+          p.boostTimer = Math.max(p.boostTimer, 240);
+        }
+      }
+      io.emit('chaosEvent', this.activeChaos);
+    } else if (type === 'crab_rain') {
+      let leadX = 0;
+      for (const p of this.players.values()) {
+        if (p.distance > leadX) leadX = p.distance;
+      }
+      const extraObs = [];
+      for (let i = 0; i < 5; i++) {
+        const obsX = leadX + 160 + i * 90 + Math.random() * 40;
+        if (obsX < TRACK_LENGTH - 100) {
+          const o = {
+            id: 'chaos_crab_' + Math.round(obsX),
+            x: obsX,
+            type: Math.random() < 0.65 ? 'crab' : 'cone',
+            width: 34,
+            height: 26
+          };
+          this.obstacles.push(o);
+          extraObs.push(o);
+        }
+      }
+      this.activeChaos = { type: 'crab_rain', name: '🦀 ฝูงปูทะเลหัวหินบุกขวางทางวิ่ง!', timer: 180, maxTimer: 180 };
+      io.emit('chaosEvent', this.activeChaos);
+      if (extraObs.length > 0) {
+        io.emit('chaosObstacles', extraObs);
+      }
     }
   }
 
@@ -341,6 +408,14 @@ class OfficeRaceManager {
     if (this.gameState === GAME_STATES.RACING) {
       this.raceTimer += 1 / 60;
       let allFinished = true;
+
+      if (this.activeChaos) {
+        this.activeChaos.timer--;
+        if (this.activeChaos.timer <= 0) {
+          this.activeChaos = null;
+          io.emit('chaosEnded');
+        }
+      }
 
       for (const player of this.players.values()) {
         if (!player.finished) {
@@ -373,6 +448,7 @@ class OfficeRaceManager {
               player.jumpY = 0;
               player.jumpVy = 0;
               player.isJumping = false;
+              player.jumpCount = 0;
             }
           }
 
@@ -382,6 +458,9 @@ class OfficeRaceManager {
 
           // 2. Speed calculation
           let currentSpeed = player.speed;
+          if (this.activeChaos && this.activeChaos.type === 'sandstorm' && player.shieldTimer <= 0) {
+            currentSpeed *= 0.6; // ลมพายุทรายหัวหินต้าน
+          }
           if (player.boostTimer > 0) {
             player.boostTimer--;
             currentSpeed *= 1.85; // บูสต์ติดสปีดพุ่งเร็วสะใจ
@@ -511,12 +590,14 @@ class OfficeRaceManager {
     this.gameState = GAME_STATES.LOBBY;
     this.countdown = 3;
     this.finishedCount = 0;
+    this.activeChaos = null;
     for (const player of this.players.values()) {
       player.distance = 0;
       player.finished = false;
       player.finishRank = 0;
       player.bonusScore = 0;
       player.totalScore = 0;
+      player.jumpCount = 0;
     }
     this.broadcastLobbyUpdate();
     io.emit('returnedToLobby');
@@ -562,6 +643,7 @@ class OfficeRaceManager {
       postFinishTimer: Math.max(0, Math.ceil(this.postFinishTimer)),
       trackLength: TRACK_LENGTH,
       ceilingHeight: CEILING_HEIGHT,
+      activeChaos: this.activeChaos,
       obstacles: this.obstacles,
       powerUps: this.powerUps.map(p => ({
         id: p.id,
@@ -669,6 +751,7 @@ io.on('connection', (socket) => {
       player,
       trackLength: TRACK_LENGTH,
       ceilingHeight: CEILING_HEIGHT,
+      activeChaos: this.activeChaos,
       isAdmin: raceGame.isAdmin(socket.id)
     });
 
@@ -677,6 +760,31 @@ io.on('connection', (socket) => {
 
   socket.on('jump', () => {
     raceGame.handlePlayerJump(socket.id);
+  });
+
+  socket.on('sendEmoji', (data) => {
+    const player = raceGame.players.get(socket.id);
+    if (!player || !data || !data.emoji) return;
+    io.emit('playerEmoji', { id: player.id, name: player.name, emoji: data.emoji });
+  });
+
+  socket.on('sendCheer', (data) => {
+    const player = raceGame.players.get(socket.id);
+    io.emit('playerCheer', {
+      id: socket.id,
+      name: player ? player.name : 'กองเชียร์',
+      type: (data && data.type) ? data.type : 'clap'
+    });
+  });
+
+  socket.on('adminChaos', (data) => {
+    if (!raceGame.isAdmin(socket.id)) {
+      socket.emit('announcement', { text: '⚠️ เฉพาะแอดมินเท่านั้นที่มีสิทธิ์กดใช้งานระบบอีเวนต์พิเศษ!' });
+      return;
+    }
+    if (data && data.type) {
+      raceGame.triggerChaos(data.type);
+    }
   });
 
   socket.on('startRace', () => {
